@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <style>
+    :root {
+      --navy: #17324d;
+      --blue: #2563eb;
+      --ice: #eef6fb;
+      --line: #d8e0e8;
+      --muted: #5c6b78;
+      --success: #17633b;
+      --danger: #b42318;
+      --warning-bg: #fff7df;
+      --warning-text: #795000;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: #f5f8fb;
+      color: #17202a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+      line-height: 1.55;
+    }
+    button, input { font: inherit; }
+    .hero {
+      color: #fff;
+      background: linear-gradient(135deg, var(--navy), #245f8f);
+      padding: 22px 16px 44px;
+    }
+    .hero-inner, .app { max-width: 860px; margin: 0 auto; }
+    .eyebrow { font-size: 11px; letter-spacing: .12em; opacity: .8; }
+    h1 { margin: 4px 0 6px; font-size: clamp(21px, 5.2vw, 32px); }
+    .hero p { margin: 0; opacity: .92; font-size: 14px; }
+    .hero .deadline { margin-top: 8px; font-size: 13px; font-weight: 700; opacity: 1; }
+    .app { margin-top: -26px; padding: 0 12px 40px; }
+    .panel {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 8px 26px rgba(23, 50, 77, .08);
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .panel-body { padding: 16px; }
+    .section-title { margin: 0 0 10px; font-size: 17px; color: var(--navy); }
+    .notice {
+      padding: 11px 13px;
+      border-radius: 10px;
+      background: var(--ice);
+      color: var(--navy);
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .warning {
+      padding: 10px 12px;
+      border-radius: 9px;
+      background: var(--warning-bg);
+      color: var(--warning-text);
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    .lock-banner {
+      padding: 12px 14px;
+      border-radius: 11px;
+      background: #fff0ee;
+      color: var(--danger);
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 14px;
+      border: 1px solid #f4c8c2;
+    }
+    .lock-banner.admin { background: #eaf7ef; color: var(--success); border-color: #bfe3cd; }
+    .identity-row { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    label { font-weight: 650; }
+    .field-label { display: block; margin-bottom: 5px; font-size: 14px; }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #aebbc7;
+      border-radius: 10px;
+      background: #fff;
+      font-size: 16px;
+    }
+    select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #aebbc7;
+      border-radius: 10px;
+      background: #fff;
+      color: inherit;
+      font-size: 16px;
+    }
+    input:focus, select:focus, button:focus-visible {
+      outline: 3px solid rgba(37, 99, 235, .22);
+      outline-offset: 2px;
+    }
+    button { border: 0; border-radius: 10px; padding: 13px 16px; cursor: pointer; font-weight: 700; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .primary { background: var(--blue); color: #fff; }
+    .secondary { color: var(--navy); background: #e8eef4; }
+    .ghost { color: var(--navy); background: transparent; border: 1px solid #aebbc7; }
+    .linklike {
+      background: none;
+      border: 0;
+      padding: 4px 0;
+      color: var(--blue);
+      text-decoration: underline;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .day-list { display: flex; flex-direction: column; gap: 10px; }
+    .day-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 12px;
+      background: #fbfcfd;
+    }
+    .day-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 9px;
+    }
+    .day-date { font-weight: 800; color: var(--navy); font-size: 15px; }
+    .opt-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .opt {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 13px;
+      border: 1px solid #c3cedb;
+      border-radius: 999px;
+      background: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 42px;
+    }
+    .opt input { width: 19px; height: 19px; accent-color: var(--blue); margin: 0; }
+    .opt:has(input:checked) { border-color: var(--blue); background: #e8f0fe; color: #123a8a; }
+    .opt:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+    .resort-badge {
+      display: inline-block;
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--navy);
+      background: var(--ice);
+    }
+    .resort-badge.pending { color: var(--warning-text); background: var(--warning-bg); }
+    .day-note { margin-top: 8px; font-size: 13px; color: var(--muted); }
+    .none-label { font-size: 13px; color: #9aa6b2; padding: 10px 2px; }
+
+    .extras { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    .extra-card {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #fbfcfd;
+      font-size: 14px;
+      min-height: 50px;
+    }
+    .extra-card input { width: 19px; height: 19px; accent-color: var(--blue); flex: none; }
+    .extra-card:has(input:checked) { border-color: var(--blue); background: #e8f0fe; }
+    .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+    .actions button { width: 100%; }
+    .message { display: none; margin-top: 13px; padding: 12px 14px; border-radius: 9px; }
+    .message.success { display: block; color: var(--success); background: #eaf7ef; }
+    .message.error { display: block; color: var(--danger); background: #fff0ee; }
+
+    .sched-grid {
+      display: grid;
+      grid-template-columns: 4.6em minmax(0, 1fr);
+      gap: 4px 8px;
+      align-items: start;
+      font-size: 13px;
+      margin: 0;
+    }
+    .sched-grid dt { color: var(--muted); font-weight: 700; }
+    .sched-grid dd { margin: 0; min-width: 0; }
+    .schedule-name {
+      display: inline-block;
+      background: #edf2f7;
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin: 2px 3px 2px 0;
+      font-size: 12px;
+    }
+    .empty { color: #9aa6b2; }
+    .loading {
+      position: fixed;
+      inset: 0;
+      background: rgba(245, 248, 251, .86);
+      display: grid;
+      place-items: center;
+      z-index: 20;
+      font-weight: 800;
+      color: var(--navy);
+    }
+    .hidden { display: none !important; }
+    .small { color: var(--muted); font-size: 13px; }
+    .row-between { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+    @media (min-width: 720px) {
+      .hero { padding: 28px 18px 52px; }
+      .app { padding: 0 16px 48px; }
+      .panel-body { padding: 20px; }
+      .identity-row { grid-template-columns: minmax(0, 1fr) minmax(200px, .7fr) auto; align-items: end; }
+      .extras { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .actions { flex-direction: row; justify-content: flex-end; }
+      .actions button { width: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">SKIHEIL OB CAMP</div>
+      <h1 id="camp-title">合宿参加登録</h1>
+      <p id="camp-period">設定を読み込んでいます…</p>
+      <p id="camp-deadline" class="deadline hidden"></p>
+    </div>
+  </header>
+  <main class="app">
+    <div id="lock-banner" class="lock-banner hidden" role="status"></div>
+
+    <section class="panel">
+      <div class="panel-body">
+        <h2 class="section-title">本人確認</h2>
+        <div class="notice">
+          初回登録時に編集用パスワードを設定します。登録内容を変更するときは、
+          同じ氏名とパスワードを入力して「登録内容を読み込む」を押してください。
+        </div>
+        <div class="identity-row">
+          <div>
+            <label class="field-label" for="name">氏名</label>
+            <input id="name" type="text" maxlength="60" autocomplete="name" placeholder="例：山田 太郎">
+          </div>
+          <div>
+            <label class="field-label" for="password">編集用パスワード</label>
+            <input id="password" type="password" maxlength="128" autocomplete="current-password">
+          </div>
+          <button id="load-button" type="button" class="secondary">登録内容を読み込む</button>
+        </div>
+        <div id="loaded-note" class="small" aria-live="polite"></div>
+        <div id="identity-note" class="small"></div>
+      </div>
+    </section>
+
+    <form id="registration-form">
+      <section class="panel">
+        <div class="panel-body">
+          <h2 class="section-title">宿泊</h2>
+          <p class="small">
+            その日の夜に泊まる場合に「宿泊」を選んでください。夕食はその夜、朝食は翌朝に自動で付きます。
+            自動設定のあと、朝食・夕食は個別に外せます。
+          </p>
+          <div id="stay-inputs" class="day-list"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-body">
+          <h2 class="section-title">リフト券</h2>
+          <p class="small">
+            現役が指定したスキー場について、リフト券の購入を現役へ依頼する日だけ選んでください。
+            1日につき指定されるスキー場は1か所だけです。
+          </p>
+          <div id="lift-inputs" class="day-list"></div>
+          <div id="lift-warning" class="warning hidden"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-body">
+          <h2 class="section-title">その他</h2>
+          <div class="extras">
+            <label class="extra-card">
+              <input id="bus-out" type="checkbox">
+              <span>バス（行）を利用する</span>
+            </label>
+            <label class="extra-card">
+              <input id="bus-in" type="checkbox">
+              <span>バス（帰）を利用する</span>
+            </label>
+            <label class="extra-card">
+              <input id="certification" type="checkbox">
+              <span>検定を受験する</span>
+            </label>
+          </div>
+          <div class="actions">
+            <button id="reset-button" type="button" class="ghost">選択をリセット</button>
+            <button id="submit-button" type="submit" class="primary">この内容で保存する</button>
+          </div>
+          <div id="message" class="message" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+    </form>
+
+    <section class="panel">
+      <div class="panel-body">
+        <div class="row-between">
+          <h2 class="section-title" style="margin:0;">参加予定一覧</h2>
+          <button id="refresh-button" type="button" class="secondary">更新</button>
+        </div>
+        <p class="small">受付済みの予定を日付別に表示しています。</p>
+        <div id="schedule-body" class="day-list"></div>
+      </div>
+    </section>
+
+    <? if (adminEntry) { ?>
+    <section id="admin-panel" class="panel hidden">
+      <div class="panel-body">
+        <h2 class="section-title">幹事メニュー</h2>
+        <div id="admin-login">
+          <p class="small">
+            管理者パスワードを入力すると、登録済みの人を選んで内容を修正できます。
+            本人の編集用パスワードは不要です。
+          </p>
+          <label class="field-label" for="admin-password">管理者パスワード</label>
+          <input id="admin-password" type="password" maxlength="128" autocomplete="off">
+          <div class="actions">
+            <button id="admin-submit" type="button" class="secondary">管理者モードを開始</button>
+          </div>
+        </div>
+        <div id="admin-console" class="hidden">
+          <div class="lock-banner admin" style="margin-bottom:14px;">
+            管理者モードです。本人のパスワードなしで修正でき、変更受付期限も無視されます。
+          </div>
+          <label class="field-label" for="admin-target">修正する人</label>
+          <select id="admin-target"></select>
+          <div class="actions">
+            <button id="admin-load" type="button" class="secondary">この人の登録を読み込む</button>
+            <button id="admin-exit" type="button" class="ghost">管理者モードを終了</button>
+          </div>
+        </div>
+        <div id="admin-note" class="small" aria-live="polite"></div>
+      </div>
+    </section>
+    <? } ?>
+  </main>
+  <div id="loading" class="loading">読み込み中…</div>
+  <script>
+    const ADMIN_ENTRY = Boolean(document.getElementById('admin-panel'));
+
+    const state = {
+      config: null,
+      schedule: [],
+      loadedName: '',
+      adminMode: false,
+      adminPassword: '',
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('load-button').addEventListener('click', loadExisting);
+      document.getElementById('registration-form').addEventListener('submit', submitRegistration);
+      document.getElementById('reset-button').addEventListener('click', () => resetSelections(true));
+      document.getElementById('refresh-button').addEventListener('click', refreshAppData);
+      if (ADMIN_ENTRY) {
+        document.getElementById('admin-submit').addEventListener('click', submitAdminPassword);
+        document.getElementById('admin-load').addEventListener('click', adminLoadSelected);
+        document.getElementById('admin-exit').addEventListener('click', exitAdminMode);
+      }
+      document.getElementById('stay-inputs').addEventListener('change', (event) => {
+        if (event.target && event.target.id.startsWith('stay-')) {
+          applyMealDefaultsFromStays();
+        }
+      });
+      refreshAppData();
+    });
+
+    function refreshAppData() {
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler((data) => {
+          try {
+            state.config = data.config;
+            state.schedule = data.schedule || [];
+            document.getElementById('password').minLength = state.config.passwordMinLength;
+            renderHeader();
+            renderStayInputs();
+            renderLiftInputs();
+            renderSchedule();
+            applyLockState();
+          } catch (error) {
+            showMessage(
+              '画面を組み立てられませんでした: '
+              + (error && error.message ? error.message : error),
+              true,
+            );
+          } finally {
+            setLoading(false);
+          }
+        })
+        .withFailureHandler(handleFailure)
+        .getAppData();
+    }
+
+    function renderHeader() {
+      document.getElementById('camp-title').textContent = state.config.campName;
+      const start = displayDate(state.config.startIso);
+      const end = displayDate(state.config.endIso);
+      document.getElementById('camp-period').textContent = `${start} 〜 ${end}`;
+      const deadline = document.getElementById('camp-deadline');
+      if (state.config.editDeadlineLabel) {
+        deadline.textContent = `変更受付期限：${state.config.editDeadlineLabel}`;
+        deadline.classList.remove('hidden');
+      } else {
+        deadline.classList.add('hidden');
+      }
+      if (ADMIN_ENTRY) {
+        document
+          .getElementById('admin-panel')
+          .classList.toggle('hidden', !state.config.adminUnlockAvailable);
+      }
+    }
+
+    function renderStayInputs() {
+      const host = document.getElementById('stay-inputs');
+      host.replaceChildren();
+      state.config.days.forEach((day) => {
+        const card = dayCard(day);
+        const row = document.createElement('div');
+        row.className = 'opt-row';
+        if (day.canStay) {
+          row.appendChild(optionPill(`stay-${day.iso}`, 'この夜に宿泊'));
+        } else {
+          row.appendChild(noneLabel('最終日のため宿泊はありません'));
+        }
+        row.appendChild(optionPill(`breakfast-${day.iso}`, '朝食'));
+        row.appendChild(optionPill(`dinner-${day.iso}`, '夕食'));
+        card.appendChild(row);
+        host.appendChild(card);
+      });
+      applyMealDefaultsFromStays();
+    }
+
+    function renderLiftInputs() {
+      const host = document.getElementById('lift-inputs');
+      host.replaceChildren();
+      let pendingCount = 0;
+      state.config.days.forEach((day) => {
+        const badge = document.createElement('span');
+        badge.className = `resort-badge${day.liftEnabled ? '' : ' pending'}`;
+        badge.textContent = day.liftResort;
+        const card = dayCard(day, badge);
+        const row = document.createElement('div');
+        row.className = 'opt-row';
+        if (day.liftEnabled) {
+          row.appendChild(optionPill(`lift-${day.iso}`, '現役に購入を依頼する'));
+        } else if (day.liftResort === '未定') {
+          pendingCount += 1;
+          row.appendChild(noneLabel('スキー場が未定のため選べません'));
+        } else {
+          row.appendChild(noneLabel('この日は購入依頼できません'));
+        }
+        card.appendChild(row);
+        if (day.liftNote) {
+          const note = document.createElement('div');
+          note.className = 'day-note';
+          note.textContent = day.liftNote;
+          card.appendChild(note);
+        }
+        host.appendChild(card);
+      });
+      const warning = document.getElementById('lift-warning');
+      if (pendingCount) {
+        warning.textContent =
+          `スキー場が未定の日が${pendingCount}日あります。指定後に管理者から案内があります。`;
+        warning.classList.remove('hidden');
+      } else {
+        warning.classList.add('hidden');
+      }
+    }
+
+    function renderSchedule() {
+      const host = document.getElementById('schedule-body');
+      host.replaceChildren();
+      if (!state.schedule.length) {
+        const empty = document.createElement('p');
+        empty.className = 'empty';
+        empty.textContent = 'まだ受付済みの予定はありません。';
+        host.appendChild(empty);
+        return;
+      }
+      state.schedule.forEach((day) => {
+        const card = document.createElement('div');
+        card.className = 'day-card';
+        const head = document.createElement('div');
+        head.className = 'day-head';
+        const date = document.createElement('span');
+        date.className = 'day-date';
+        date.textContent = day.label;
+        const badge = document.createElement('span');
+        const resort = day.resort || '未定';
+        badge.className = `resort-badge${resort === '未定' ? ' pending' : ''}`;
+        badge.textContent = resort;
+        head.appendChild(date);
+        head.appendChild(badge);
+        card.appendChild(head);
+        const list = document.createElement('dl');
+        list.className = 'sched-grid';
+        scheduleRow(list, '宿泊', day.stay);
+        scheduleRow(list, 'リフト', day.lift);
+        scheduleRow(list, '朝食', day.breakfast);
+        scheduleRow(list, '夕食', day.dinner);
+        card.appendChild(list);
+        host.appendChild(card);
+      });
+    }
+
+    function scheduleRow(list, labelText, names) {
+      const dt = document.createElement('dt');
+      dt.textContent = labelText;
+      const dd = document.createElement('dd');
+      if (!names || !names.length) {
+        dd.textContent = '—';
+        dd.className = 'empty';
+      } else {
+        names.forEach((name) => {
+          const chip = document.createElement('span');
+          chip.className = 'schedule-name';
+          chip.textContent = name;
+          dd.appendChild(chip);
+        });
+      }
+      list.appendChild(dt);
+      list.appendChild(dd);
+    }
+
+    function dayCard(day, badge) {
+      const card = document.createElement('div');
+      card.className = 'day-card';
+      card.dataset.date = day.iso;
+      const head = document.createElement('div');
+      head.className = 'day-head';
+      const date = document.createElement('span');
+      date.className = 'day-date';
+      date.textContent = `${day.label}（${day.weekday}）`;
+      head.appendChild(date);
+      if (badge) head.appendChild(badge);
+      card.appendChild(head);
+      return card;
+    }
+
+    function optionPill(id, labelText) {
+      const label = document.createElement('label');
+      label.className = 'opt';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.id = id;
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(labelText));
+      return label;
+    }
+
+    function noneLabel(text) {
+      const span = document.createElement('span');
+      span.className = 'none-label';
+      span.textContent = text;
+      return span;
+    }
+
+    function applyMealDefaultsFromStays() {
+      if (!state.config) return;
+      const stayDates = state.config.days
+        .filter((day) => checked(`stay-${day.iso}`))
+        .map((day) => day.iso);
+      const dinners = new Set(stayDates);
+      const breakfasts = new Set(
+        stayDates
+          .map((iso) => addIsoDays(iso, 1))
+          .filter((iso) => state.config.days.some((day) => day.iso === iso)),
+      );
+      state.config.days.forEach((day) => {
+        const breakfast = document.getElementById(`breakfast-${day.iso}`);
+        const dinner = document.getElementById(`dinner-${day.iso}`);
+        if (breakfast) breakfast.checked = breakfasts.has(day.iso);
+        if (dinner) dinner.checked = dinners.has(day.iso);
+      });
+    }
+
+    function collectPayload() {
+      const payload = {
+        name: document.getElementById('name').value.trim(),
+        password: document.getElementById('password').value,
+        adminPassword: state.adminPassword,
+        stayDates: [],
+        breakfast: [],
+        dinner: [],
+        liftDates: [],
+        busOut: document.getElementById('bus-out').checked,
+        busIn: document.getElementById('bus-in').checked,
+        certification: document.getElementById('certification').checked,
+      };
+      state.config.days.forEach((day) => {
+        if (checked(`stay-${day.iso}`)) payload.stayDates.push(day.iso);
+        if (checked(`breakfast-${day.iso}`)) payload.breakfast.push(day.iso);
+        if (checked(`dinner-${day.iso}`)) payload.dinner.push(day.iso);
+        if (checked(`lift-${day.iso}`)) payload.liftDates.push(day.iso);
+      });
+      return payload;
+    }
+
+    function loadExisting() {
+      const name = document.getElementById('name').value.trim();
+      const password = document.getElementById('password').value;
+      if (!name) return showMessage('氏名を入力してください。', true);
+      if (!password || password.length < state.config.passwordMinLength) {
+        return showMessage(
+          `編集用パスワードを${state.config.passwordMinLength}文字以上で入力してください。`,
+          true,
+        );
+      }
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler((data) => {
+          if (!data) {
+            resetSelections(false);
+            state.loadedName = '';
+            document.getElementById('loaded-note').textContent =
+              '登録は見つかりませんでした。この氏名とパスワードで新規登録できます。';
+            setLoading(false);
+            return;
+          }
+          resetSelections(false);
+          applyList(data.stayDates, 'stay');
+          applyList(data.breakfast, 'breakfast');
+          applyList(data.dinner, 'dinner');
+          applyList(data.liftDates, 'lift');
+          document.getElementById('bus-out').checked = data.busOut;
+          document.getElementById('bus-in').checked = data.busIn;
+          document.getElementById('certification').checked = data.certification;
+          state.loadedName = data.name;
+          document.getElementById('loaded-note').textContent =
+            `${data.name} さんの登録内容を読み込みました。`;
+          setLoading(false);
+        })
+        .withFailureHandler(handleFailure)
+        .loadRegistration(name, password);
+    }
+
+    function submitRegistration(event) {
+      event.preventDefault();
+      if (isLocked()) {
+        return showMessage(
+          `変更受付期限（${state.config.editDeadlineLabel}）を過ぎているため保存できません。`,
+          true,
+        );
+      }
+      const payload = collectPayload();
+      if (!payload.name) return showMessage('氏名を入力してください。', true);
+      if (!state.adminMode
+        && (!payload.password || payload.password.length < state.config.passwordMinLength)) {
+        return showMessage(
+          `編集用パスワードを${state.config.passwordMinLength}文字以上で入力してください。`,
+          true,
+        );
+      }
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler((result) => {
+          state.schedule = result.schedule || [];
+          state.loadedName = payload.name;
+          renderSchedule();
+          showMessage(result.message, false);
+          document.getElementById('loaded-note').textContent =
+            `登録ID: ${result.registrationId}`;
+          setLoading(false);
+        })
+        .withFailureHandler(handleFailure)
+        .saveRegistration(payload);
+    }
+
+    function isLocked() {
+      return Boolean(state.config && state.config.editingClosed && !state.adminMode);
+    }
+
+    function applyLockState() {
+      const locked = isLocked();
+      document
+        .querySelectorAll('#registration-form input')
+        .forEach((element) => { element.disabled = locked; });
+      document.getElementById('reset-button').disabled = locked;
+      document.getElementById('submit-button').disabled = locked;
+
+      applyAdminState();
+
+      const banner = document.getElementById('lock-banner');
+      if (!state.config || !state.config.editingClosed) {
+        banner.className = 'lock-banner hidden';
+        banner.textContent = '';
+        return;
+      }
+      if (state.adminMode) {
+        banner.className = 'lock-banner admin';
+        banner.textContent = '管理者モードです。変更受付期限を過ぎていますが保存できます。';
+      } else {
+        banner.className = 'lock-banner';
+        banner.textContent =
+          `変更受付期限（${state.config.editDeadlineLabel}）を過ぎたため、Webからの登録・変更はできません。`
+          + '変更が必要な場合は幹事へご連絡ください。';
+      }
+    }
+
+    function submitAdminPassword() {
+      if (!ADMIN_ENTRY) return;
+      const password = document.getElementById('admin-password').value;
+      const note = document.getElementById('admin-note');
+      if (!password) {
+        note.textContent = '管理者パスワードを入力してください。';
+        return;
+      }
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler((list) => {
+          state.adminMode = true;
+          state.adminPassword = password;
+          document.getElementById('admin-password').value = '';
+          note.textContent = '';
+          fillAdminTargets(list);
+          setLoading(false);
+          applyLockState();
+          showMessage('管理者モードを開始しました。修正する人を選んでください。', false);
+        })
+        .withFailureHandler((error) => {
+          setLoading(false);
+          note.textContent = error && error.message
+            ? error.message
+            : '管理者パスワードを確認できませんでした。';
+        })
+        .listRegistrationsForAdmin(password);
+    }
+
+    function fillAdminTargets(list) {
+      const select = document.getElementById('admin-target');
+      select.replaceChildren();
+      const people = list || [];
+      if (!people.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'まだ登録がありません';
+        select.appendChild(option);
+        select.disabled = true;
+        document.getElementById('admin-load').disabled = true;
+        return;
+      }
+      select.disabled = false;
+      document.getElementById('admin-load').disabled = false;
+      people.forEach((person) => {
+        const option = document.createElement('option');
+        option.value = person.name;
+        option.textContent = `${person.name}（${person.status || '—'} / ${person.payment || '—'}）`;
+        select.appendChild(option);
+      });
+    }
+
+    function adminLoadSelected() {
+      if (!ADMIN_ENTRY) return;
+      const name = document.getElementById('admin-target').value;
+      const note = document.getElementById('admin-note');
+      if (!name) {
+        note.textContent = '修正する人を選んでください。';
+        return;
+      }
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler((data) => {
+          resetSelections(false);
+          document.getElementById('name').value = data.name;
+          applyList(data.stayDates, 'stay');
+          applyList(data.breakfast, 'breakfast');
+          applyList(data.dinner, 'dinner');
+          applyList(data.liftDates, 'lift');
+          document.getElementById('bus-out').checked = data.busOut;
+          document.getElementById('bus-in').checked = data.busIn;
+          document.getElementById('certification').checked = data.certification;
+          state.loadedName = data.name;
+          document.getElementById('loaded-note').textContent =
+            `${data.name} さんの登録内容を読み込みました（管理者モード）。`;
+          note.textContent = '';
+          setLoading(false);
+          showMessage(`${data.name} さんの内容を読み込みました。修正して保存してください。`, false);
+        })
+        .withFailureHandler((error) => {
+          setLoading(false);
+          note.textContent = error && error.message
+            ? error.message
+            : '登録を読み込めませんでした。';
+        })
+        .loadRegistrationAsAdmin(state.adminPassword, name);
+    }
+
+    function exitAdminMode() {
+      if (!ADMIN_ENTRY) return;
+      state.adminMode = false;
+      state.adminPassword = '';
+      document.getElementById('admin-note').textContent = '';
+      document.getElementById('loaded-note').textContent = '';
+      document.getElementById('name').value = '';
+      resetSelections(false);
+      applyLockState();
+      showMessage('管理者モードを終了しました。', false);
+    }
+
+    function applyAdminState() {
+      const admin = ADMIN_ENTRY && state.adminMode;
+      document.getElementById('name').readOnly = admin;
+      document.getElementById('password').disabled = admin;
+      document.getElementById('load-button').disabled = admin;
+      if (ADMIN_ENTRY) {
+        document.getElementById('admin-login').classList.toggle('hidden', admin);
+        document.getElementById('admin-console').classList.toggle('hidden', !admin);
+      }
+      document.getElementById('identity-note').textContent = admin
+        ? '管理者モードのため、本人の編集用パスワードは不要です。氏名は下の「修正する人」で選びます。'
+        : '';
+    }
+
+    function resetSelections(showNotice) {
+      document.getElementById('registration-form').reset();
+      state.loadedName = '';
+      document.getElementById('loaded-note').textContent = '';
+      applyMealDefaultsFromStays();
+      if (showNotice) {
+        showMessage('選択をリセットしました。氏名とパスワードは保持されています。', false);
+      }
+    }
+
+    function applyList(list, prefix) {
+      (list || []).forEach((iso) => {
+        const element = document.getElementById(`${prefix}-${iso}`);
+        if (element) element.checked = true;
+      });
+    }
+
+    function checked(id) {
+      const element = document.getElementById(id);
+      return Boolean(element && element.checked);
+    }
+
+    function displayDate(iso) {
+      const date = new Date(`${iso}T00:00:00`);
+      return new Intl.DateTimeFormat(
+        'ja-JP',
+        { year: 'numeric', month: 'long', day: 'numeric' },
+      ).format(date);
+    }
+
+    function addIsoDays(iso, days) {
+      const date = new Date(`${iso}T00:00:00`);
+      date.setDate(date.getDate() + days);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function showMessage(text, isError) {
+      const message = document.getElementById('message');
+      message.textContent = text;
+      message.className = `message ${isError ? 'error' : 'success'}`;
+      message.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function handleFailure(error) {
+      setLoading(false);
+      showMessage(
+        error && error.message
+          ? error.message
+          : '処理に失敗しました。時間をおいて再度お試しください。',
+        true,
+      );
+    }
+
+    function setLoading(isLoading) {
+      document.getElementById('loading').classList.toggle('hidden', !isLoading);
+      document.getElementById('load-button').disabled = isLoading || state.adminMode;
+      document.getElementById('refresh-button').disabled = isLoading;
+      document.getElementById('submit-button').disabled = isLoading || isLocked();
+      if (ADMIN_ENTRY) {
+        document.getElementById('admin-submit').disabled = isLoading;
+        document.getElementById('admin-load').disabled = isLoading;
+      }
+    }
+  </script>
+</body>
+</html>

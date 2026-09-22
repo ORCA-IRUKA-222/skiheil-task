@@ -10,6 +10,7 @@ Google Drive / Google スプレッドシート上で運用しているツール�
 | パス | 内容 |
 | --- | --- |
 | [`docs/ob-camp-template/`](docs/ob-camp-template/) | 「SKIHEIL OB合宿管理（年次テンプレート）」スプレッドシートの仕様書とシート構成スナップショット |
+| [`docs/ob-camp-master-template/`](docs/ob-camp-master-template/) | 「SKIHEIL OB合宿管理｜マスターテンプレート」（後継版）の Apps Script ソースと仕様書 |
 
 ## このリポジトリは public です
 
