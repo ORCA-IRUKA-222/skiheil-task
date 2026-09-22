@@ -51,61 +51,44 @@
     </div>
   </header>
 
-  <div id="price-banner" class="banner" hidden>
-    価格が変更されました。カートを新しい価格で計算し直しました。
-  </div>
+  <div id="catalog-banner" class="banner" hidden></div>
 
   <main class="pos">
-    <div class="keys">
-      <button class="key" data-add="set3">
-        <span class="key-name">3個</span>
-        <span class="key-price" id="key-price-set3">—</span>
-      </button>
-      <button class="key" data-add="set7">
-        <span class="key-name">7個</span>
-        <span class="key-price" id="key-price-set7">—</span>
-      </button>
-      <button class="key key-single" data-add="single">
-        <span class="key-name">バラ +1</span>
-        <span class="key-price" id="key-price-single">—</span>
-      </button>
-    </div>
-
-    <div class="quick-row">
-      <button class="chip" data-add="single" data-count="5">バラ +5</button>
-      <button class="chip" data-add="single" data-count="10">バラ +10</button>
-    </div>
+    <div id="item-list" class="item-list"></div>
+    <p id="item-empty" class="hint" hidden>
+      「商品」シートに味を登録してください。登録すると自動でボタンが出ます。
+    </p>
 
     <ul id="cart" class="cart"></ul>
-    <p id="cart-empty" class="cart-empty">商品ボタンを押してください</p>
+    <p id="cart-empty" class="hint">商品ボタンを押してください</p>
+  </main>
 
+  <footer class="checkout">
     <div class="total">
       <span id="total-pieces" class="total-pieces">0個</span>
       <span id="total-amount" class="total-amount">¥0</span>
     </div>
 
-    <div class="pay">
-      <label class="pay-row">
-        <span class="pay-label">お預かり</span>
-        <input id="input-received" type="text" inputmode="numeric" placeholder="0">
-      </label>
-      <div class="quick-row">
+    <div class="pay-row">
+      <input id="input-received" type="text" inputmode="numeric" placeholder="お預かり">
+      <div class="chips">
         <button class="chip" data-received="exact">ちょうど</button>
         <button class="chip" data-received="1000">1,000</button>
         <button class="chip" data-received="2000">2,000</button>
         <button class="chip" data-received="5000">5,000</button>
         <button class="chip" data-received="10000">10,000</button>
       </div>
-      <div class="change">
-        <span class="change-label">おつり</span>
-        <span id="change-amount" class="change-amount">¥0</span>
-      </div>
     </div>
-  </main>
 
-  <footer class="actions">
-    <button id="btn-clear" class="btn btn-ghost">クリア</button>
-    <button id="btn-checkout" class="btn btn-primary btn-grow" disabled>会計する</button>
+    <div class="change">
+      <span class="change-label">おつり</span>
+      <span id="change-amount" class="change-amount">¥0</span>
+    </div>
+
+    <div class="actions">
+      <button id="btn-clear" class="btn btn-ghost">クリア</button>
+      <button id="btn-checkout" class="btn btn-primary btn-grow" disabled>会計する</button>
+    </div>
   </footer>
 </section>
 
@@ -129,7 +112,7 @@
   </header>
   <main class="history">
     <ul id="history-list" class="history-list"></ul>
-    <p id="history-empty" class="cart-empty">まだ会計がありません</p>
+    <p id="history-empty" class="hint">まだ会計がありません</p>
   </main>
 </section>
 

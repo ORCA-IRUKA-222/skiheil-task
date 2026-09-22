@@ -2,23 +2,24 @@
  * 文化祭レジ（ベビーカステラ）— サーバー側
  *
  * ── 同期の設計 ──────────────────────────────────────────────
- *  価格マスタ : スプレッドシート → アプリ の「一方向」
+ *  商品・価格 : スプレッドシート → アプリ の「一方向」
  *  売上明細   : アプリ → スプレッドシート の「一方向・追記のみ」
  *
  *  同じデータが双方向に流れないので、原理的に競合が起きない。
  *  そのうえで次の 2 つを守る。
  *
- *   1. 売上行には「会計時に適用した単価」を値で焼き込む（スナップショット）。
+ *   1. 売上行には「会計時に適用した商品名と単価」を値で焼き込む（スナップショット）。
  *      あとから価格を変えても過去の売上金額は動かない。
  *   2. 取引 ID（UUID）で冪等化する。オフライン再送で二重計上しない。
  *
- *  価格変更の検知はタイムスタンプではなく「価格バージョン（単調増加の整数）」で行う。
+ *  変更の検知はタイムスタンプではなく「カタログバージョン（単調増加の整数）」で行う。
  *  端末の時計がずれていても壊れないため。
  * ────────────────────────────────────────────────────────────
  */
 
 const SHEETS = {
   SETTINGS: '設定',
+  ITEMS: '商品',
   SALES: '売上',
   CLOSING: 'レジ締め',
   DASHBOARD: 'ダッシュボード'
@@ -30,24 +31,42 @@ const SETTINGS_FIRST_ROW = 5;
 
 /** 設定の既定値（キー, 項目名, 値, 説明, 編集可か） */
 const SETTINGS_DEFS = [
-  ['PRICE_SET3',    '3個セット',      300,                     'ボタン「3個」の価格', true],
-  ['PRICE_SET7',    '7個セット',      600,                     'ボタン「7個」の価格', true],
-  ['PRICE_SINGLE',  'バラ1個',        120,                     'セット以外はこの単価 × 個数', true],
-  ['SHOP_NAME',     '店名',           'ベビーカステラ',         'アプリ上部に表示', true],
-  ['PASSCODE',      'パスコード',      '',                      'アプリを開くときに入力する。初期化時に自動生成', true],
-  ['PRICE_VERSION', '価格バージョン',  1,                       '自動更新。手で編集しない', false],
-  ['PRICE_UPDATED', '価格更新日時',    '',                      '自動更新。手で編集しない', false]
+  ['SHOP_NAME',        '店名',              'ベビーカステラ', 'アプリ上部に表示', true],
+  ['PASSCODE',         'パスコード',         '',              'アプリを開くときに入力する。初期化時に自動生成', true],
+  ['CATALOG_VERSION',  'カタログバージョン',  1,               '自動更新。手で編集しない', false],
+  ['CATALOG_UPDATED',  '最終更新日時',       '',              '自動更新。手で編集しない', false]
 ];
 
-/** 価格そのものを持つキー。ここが編集されたらバージョンを上げる */
-const PRICE_KEYS = ['PRICE_SET3', 'PRICE_SET7', 'PRICE_SINGLE'];
+/** 自動更新のため、編集されてもバージョンを上げないキー */
+const AUTO_KEYS = ['CATALOG_VERSION', 'CATALOG_UPDATED'];
 
-/** 売上シートの列見出し */
+/** 商品シートのレイアウト */
+const ITEMS_HEADER_ROW = 4;
+const ITEMS_FIRST_ROW = 5;
+const ITEMS_LAST_ROW = 54;
+const ITEMS_HEADERS = ['商品名', '3個セット', '7個セット', 'バラ1個', '販売状態', '備考'];
+
+/** 初期化時に入れておくサンプル（味ごとに1行） */
+const ITEMS_SAMPLE = [
+  ['プレーン', 300, 600, 120, '販売中', ''],
+  ['チョコ',   350, 700, 140, '販売中', '']
+];
+
+const SALE_STATES = ['販売中', '停止中'];
+
+/** 売り方の区分。バラは「セット以外は常にバラ単価」で使う */
+const UNITS = ['set3', 'set7', 'single'];
+const UNIT_LABELS = { set3: '3個セット', set7: '7個セット', single: 'バラ' };
+const UNIT_PIECES = { set3: 3, set7: 7, single: 1 };
+
+/**
+ * 売上シートの列見出し。1 行 = 1 明細。
+ * 取引単位の値（取引合計・お預かり・お釣り・検証・備考）は、その取引の先頭明細行にだけ入る。
+ */
 const SALES_HEADERS = [
-  '受信日時', '取引ID', '端末ID', '担当者', '会計日時', '種別', '取消元取引ID',
-  '3個セット', '7個セット', 'バラ(個)', '合計個数',
-  '単価(3個)', '単価(7個)', '単価(バラ)', '価格Ver',
-  '合計金額', 'お預かり', 'お釣り', '検証', '備考'
+  '受信日時', '取引ID', '明細番号', '端末ID', '担当者', '会計日時', '種別', '取消元取引ID',
+  '商品名', '区分', '数量', '個数', '単価', '金額', 'カタログVer',
+  '取引合計', 'お預かり', 'お釣り', '検証', '備考'
 ];
 const SALES_HEADER_ROW = 4;
 const SALES_FIRST_ROW = 5;
@@ -69,7 +88,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('レジ管理')
     .addItem('シートを初期化 / 修復', 'setupSheets')
-    .addItem('価格バージョンを上げる（全端末に再読込させる）', 'bumpPriceVersionManually')
+    .addItem('カタログバージョンを上げる（全端末に再読込させる）', 'bumpCatalogVersionManually')
     .addSeparator()
     .addItem('売上をCSVで書き出す', 'exportSalesCsv')
     .addItem('設定をチェック', 'checkSettings')
@@ -77,48 +96,56 @@ function onOpen() {
 }
 
 /**
- * 設定シートの価格が編集されたら価格バージョンを上げる。
+ * 商品や設定が編集されたらカタログバージョンを上げる。
  * 簡易トリガーなので、スプレッドシートへの書き込みだけを行う。
  */
 function onEdit(e) {
   try {
     if (!e || !e.range) return;
     const sheet = e.range.getSheet();
-    if (sheet.getName() !== SHEETS.SETTINGS) return;
-    if (e.range.getColumn() !== 3) return; // 値は C 列
+    const name = sheet.getName();
 
-    const rows = _settingsRowIndex_(sheet);
-    const touched = PRICE_KEYS.some(function (key) {
-      const row = rows[key];
-      return row && row >= e.range.getRow() && row <= e.range.getLastRow();
-    });
-    if (!touched) return;
+    if (name === SHEETS.ITEMS) {
+      if (e.range.getLastRow() <= ITEMS_HEADER_ROW) return;
+    } else if (name === SHEETS.SETTINGS) {
+      if (e.range.getColumn() !== 3) return; // 値は C 列
+      const rows = _settingsRowIndex_(sheet);
+      const autoOnly = AUTO_KEYS.every(function (key) {
+        return rows[key] && rows[key] >= e.range.getRow() && rows[key] <= e.range.getLastRow();
+      });
+      const touchedAuto = AUTO_KEYS.some(function (key) {
+        return rows[key] && rows[key] >= e.range.getRow() && rows[key] <= e.range.getLastRow();
+      });
+      // 自動更新セルだけが変わった場合は無限に上がり続けないよう何もしない
+      if (touchedAuto && autoOnly) return;
+    } else {
+      return;
+    }
 
-    _bumpPriceVersion_(sheet, rows);
+    _bumpCatalogVersion_();
   } catch (err) {
     // 簡易トリガーで例外を投げるとユーザーに不可解なエラーが出るだけなので握りつぶす
     console.error(err);
   }
 }
 
-function bumpPriceVersionManually() {
-  const sheet = _sheet_(SHEETS.SETTINGS);
-  const version = _bumpPriceVersion_(sheet, _settingsRowIndex_(sheet));
+function bumpCatalogVersionManually() {
+  const version = _bumpCatalogVersion_();
   SpreadsheetApp.getUi().alert(
-    '価格バージョンを ' + version + ' にしました。\n' +
-    '各端末は次回の同期（最大30秒）で新しい価格を読み込みます。'
+    'カタログバージョンを ' + version + ' にしました。\n' +
+    '各端末は次回の同期（最大15秒）で新しい商品と価格を読み込みます。'
   );
 }
 
-function _bumpPriceVersion_(sheet, rows) {
-  const versionRow = rows['PRICE_VERSION'];
-  const updatedRow = rows['PRICE_UPDATED'];
+function _bumpCatalogVersion_() {
+  const sheet = _sheet_(SHEETS.SETTINGS);
+  const rows = _settingsRowIndex_(sheet);
+  const versionRow = rows['CATALOG_VERSION'];
+  const updatedRow = rows['CATALOG_UPDATED'];
   const current = Number(sheet.getRange(versionRow, 3).getValue()) || 0;
   const next = current + 1;
   sheet.getRange(versionRow, 3).setValue(next);
-  if (updatedRow) {
-    sheet.getRange(updatedRow, 3).setValue(new Date());
-  }
+  if (updatedRow) sheet.getRange(updatedRow, 3).setValue(new Date());
   return next;
 }
 
@@ -143,18 +170,18 @@ function include(filename) {
 // ============================================================
 
 /**
- * 起動時。パスコードを確認して店名と価格を返す。
+ * 起動時。パスコードを確認して店名と商品カタログを返す。
  */
 function apiBootstrap(passcode) {
   const config = _readSettings_();
-  if (String(passcode || '') !== String(config.PASSCODE)) {
+  if (!_passcodeOk_(passcode, config)) {
     return { ok: false, error: 'パスコードが違います' };
   }
   return {
     ok: true,
     shopName: String(config.SHOP_NAME || 'レジ'),
-    prices: _prices_(config),
-    priceVersion: Number(config.PRICE_VERSION) || 0,
+    catalog: _readCatalog_(),
+    catalogVersion: Number(config.CATALOG_VERSION) || 0,
     serverTime: new Date().toISOString()
   };
 }
@@ -167,7 +194,7 @@ function apiBootstrap(passcode) {
  */
 function apiSyncTransactions(passcode, transactions) {
   const config = _readSettings_();
-  if (String(passcode || '') !== String(config.PASSCODE)) {
+  if (!_passcodeOk_(passcode, config)) {
     return { ok: false, error: 'パスコードが違います' };
   }
 
@@ -175,8 +202,9 @@ function apiSyncTransactions(passcode, transactions) {
   const result = {
     ok: true,
     acceptedIds: [],
-    prices: _prices_(config),
-    priceVersion: Number(config.PRICE_VERSION) || 0,
+    rejected: [],
+    catalog: _readCatalog_(),
+    catalogVersion: Number(config.CATALOG_VERSION) || 0,
     serverTime: new Date().toISOString()
   };
   if (list.length === 0) return result;
@@ -199,8 +227,14 @@ function apiSyncTransactions(passcode, transactions) {
         result.acceptedIds.push(tx.id);
         return;
       }
+      const built = _toSalesRows_(tx, now);
+      if (built.rows.length === 0) {
+        // 明細のない取引は書かない。端末側で原因がわかるよう理由を返す
+        result.rejected.push({ id: String(tx.id), reason: built.error || '明細がありません' });
+        return;
+      }
       known[tx.id] = true;
-      rows.push(_toSalesRow_(tx, now));
+      built.rows.forEach(function (row) { rows.push(row); });
       result.acceptedIds.push(tx.id);
     });
 
@@ -219,7 +253,7 @@ function apiSyncTransactions(passcode, transactions) {
  */
 function apiCloseRegister(passcode, payload) {
   const config = _readSettings_();
-  if (String(passcode || '') !== String(config.PASSCODE)) {
+  if (!_passcodeOk_(passcode, config)) {
     return { ok: false, error: 'パスコードが違います' };
   }
   const p = payload || {};
@@ -254,49 +288,73 @@ function apiCloseRegister(passcode, payload) {
 }
 
 // ============================================================
-// 内部処理
+// 売上行の組み立て
 // ============================================================
 
-function _toSalesRow_(tx, receivedAt) {
+/**
+ * 取引 1 件を明細行の配列にする。1 行 = 1 明細。
+ * 取引単位の値は先頭行にだけ入れ、以降の行は空にする。
+ */
+function _toSalesRows_(tx, receivedAt) {
   const sign = tx.kind === 'void' ? -1 : 1;
-  const set3 = Math.round(_num_(tx.items && tx.items.set3));
-  const set7 = Math.round(_num_(tx.items && tx.items.set7));
-  const single = Math.round(_num_(tx.items && tx.items.single));
+  const lines = Array.isArray(tx.lines) ? tx.lines : [];
+  const valid = [];
 
-  const unit3 = _num_(tx.unitPrices && tx.unitPrices.set3);
-  const unit7 = _num_(tx.unitPrices && tx.unitPrices.set7);
-  const unitSingle = _num_(tx.unitPrices && tx.unitPrices.single);
+  lines.forEach(function (line) {
+    if (!line) return;
+    const item = String(line.item || '').trim();
+    const unit = String(line.unit || '');
+    const qty = Math.round(_num_(line.qty));
+    if (!item || UNITS.indexOf(unit) < 0 || qty <= 0) return;
+    valid.push({ item: item, unit: unit, qty: qty, unitPrice: _num_(line.unitPrice) });
+  });
 
-  const pieces = set3 * 3 + set7 * 7 + single;
+  if (valid.length === 0) {
+    return { rows: [], error: '有効な明細がありません' };
+  }
+
   // 端末が送ってきた単価から金額を組み直す。端末側の計算と食い違えば「検証」列に出す
-  const recomputed = set3 * unit3 + set7 * unit7 + single * unitSingle;
+  const recomputed = valid.reduce(function (sum, l) { return sum + l.qty * l.unitPrice; }, 0);
   const claimed = _num_(tx.total);
   const verdict = Math.abs(recomputed - claimed) < 0.5
     ? 'OK'
     : '不一致（端末: ' + claimed + ' / 再計算: ' + recomputed + '）';
 
-  return [
-    receivedAt,
-    String(tx.id),
-    String(tx.deviceId || ''),
-    String(tx.staff || ''),
-    tx.clientTime ? new Date(tx.clientTime) : '',
-    tx.kind === 'void' ? '取消' : '売上',
-    String(tx.voidOf || ''),
-    sign * set3,
-    sign * set7,
-    sign * single,
-    sign * pieces,
-    unit3,
-    unit7,
-    unitSingle,
-    _num_(tx.priceVersion),
-    sign * recomputed,
-    tx.kind === 'void' ? '' : _numOrBlank_(tx.received),
-    tx.kind === 'void' ? '' : _numOrBlank_(tx.change),
-    verdict,
-    String(tx.note || '')
-  ];
+  const rows = valid.map(function (l, index) {
+    const first = index === 0;
+    return [
+      receivedAt,
+      String(tx.id),
+      index + 1,
+      String(tx.deviceId || ''),
+      String(tx.staff || ''),
+      tx.clientTime ? new Date(tx.clientTime) : '',
+      tx.kind === 'void' ? '取消' : '売上',
+      String(tx.voidOf || ''),
+      l.item,
+      UNIT_LABELS[l.unit],
+      sign * l.qty,
+      sign * l.qty * UNIT_PIECES[l.unit],
+      l.unitPrice,
+      sign * l.qty * l.unitPrice,
+      _num_(tx.priceVersion || tx.catalogVersion),
+      first ? sign * recomputed : '',
+      first && tx.kind !== 'void' ? _numOrBlank_(tx.received) : '',
+      first && tx.kind !== 'void' ? _numOrBlank_(tx.change) : '',
+      first ? verdict : '',
+      first ? String(tx.note || '') : ''
+    ];
+  });
+
+  return { rows: rows, error: '' };
+}
+
+// ============================================================
+// 内部処理
+// ============================================================
+
+function _passcodeOk_(given, config) {
+  return String(given || '') === String(config.PASSCODE || '');
 }
 
 function _existingTransactionIds_(sheet) {
@@ -342,12 +400,35 @@ function _settingsRowIndex_(sheet) {
   return rows;
 }
 
-function _prices_(config) {
-  return {
-    set3: _num_(config.PRICE_SET3),
-    set7: _num_(config.PRICE_SET7),
-    single: _num_(config.PRICE_SINGLE)
-  };
+/**
+ * 商品シートを読んでカタログにする。
+ * 商品名がキー。同じ名前が 2 行あった場合は先に書かれている方を採用する。
+ * 停止中の商品も active:false として返す（会計途中のカートの単価が引けなくなるため）。
+ */
+function _readCatalog_() {
+  const sheet = _sheet_(SHEETS.ITEMS);
+  const last = sheet.getLastRow();
+  if (last < ITEMS_FIRST_ROW) return [];
+
+  const values = sheet
+    .getRange(ITEMS_FIRST_ROW, 1, last - ITEMS_FIRST_ROW + 1, ITEMS_HEADERS.length)
+    .getValues();
+
+  const seen = {};
+  const catalog = [];
+  values.forEach(function (row) {
+    const name = String(row[0] || '').trim();
+    if (!name || seen[name]) return;
+    seen[name] = true;
+    catalog.push({
+      name: name,
+      set3: _num_(row[1]),
+      set7: _num_(row[2]),
+      single: _num_(row[3]),
+      active: String(row[4] || '販売中').trim() !== '停止中'
+    });
+  });
+  return catalog;
 }
 
 function _sheet_(name) {
