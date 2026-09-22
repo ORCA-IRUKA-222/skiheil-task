@@ -10,6 +10,7 @@ Google Drive / Google スプレッドシート上で運用しているツール�
 | パス | 内容 |
 | --- | --- |
 | [`docs/ob-camp-template/`](docs/ob-camp-template/) | 「SKIHEIL OB合宿管理（年次テンプレート）」スプレッドシートの仕様書とシート構成スナップショット |
+| [`apps/festival-pos/`](apps/festival-pos/) | 文化祭のレジアプリ（ベビーカステラ）。GAS 製・オフライン対応 |
 
 ## このリポジトリは public です
 

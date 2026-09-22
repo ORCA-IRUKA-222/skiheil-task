@@ -1,0 +1,698 @@
+<script>
+(function () {
+  'use strict';
+
+  // ==========================================================
+  // 設計メモ
+  //   ・会計は端末のローカル保存に即確定させ、画面をすぐ返す（オフラインでも売れる）
+  //   ・送信はバックグラウンドで再送。取引 ID で冪等なので二重計上しない
+  //   ・価格は「価格バージョン」で変更を検知し、売上には会計時の単価を焼き込む
+  // ==========================================================
+
+  var SYNC_INTERVAL_MS = 15000;   // 定期同期の間隔
+  var CALL_TIMEOUT_MS = 20000;    // サーバー呼び出しの打ち切り
+  var KEY_SESSION = 'pos.session';
+  var KEY_PRICES = 'pos.prices';
+  var KEY_TX_PREFIX = 'pos.tx.';
+
+  var state = {
+    passcode: '',
+    staff: '',
+    deviceId: '',
+    shopName: 'レジ',
+    prices: { set3: 0, set7: 0, single: 0 },
+    priceVersion: 0,
+    cart: { set3: 0, set7: 0, single: 0 },
+    floatAmount: 0,
+    startedAt: null,
+    online: true,
+    syncing: false,
+    screen: 'login'
+  };
+
+  var ITEMS = [
+    { key: 'set3', label: '3個セット', pieces: 3 },
+    { key: 'set7', label: '7個セット', pieces: 7 },
+    { key: 'single', label: 'バラ', pieces: 1 }
+  ];
+
+  function $(id) { return document.getElementById(id); }
+  function yen(n) { return '¥' + Math.round(Number(n) || 0).toLocaleString('ja-JP'); }
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+  function parseAmount(v) {
+    var n = Number(String(v == null ? '' : v).replace(/[^0-9.-]/g, ''));
+    return isFinite(n) ? n : 0;
+  }
+  function timeLabel(iso) {
+    var d = new Date(iso);
+    return isNaN(d) ? '—' : d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // ==========================================================
+  // ローカル保存（localStorage）
+  //   取引は 1 件 1 キーにして、会計のたびに全件を書き直さないようにする
+  // ==========================================================
+
+  var memoryFallback = {};
+  var useMemory = false;
+
+  function lsSet(key, value) {
+    if (useMemory) { memoryFallback[key] = value; return true; }
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (err) {
+      // 容量超過やプライベートブラウジング。メモリに退避して警告する
+      useMemory = true;
+      memoryFallback[key] = value;
+      toast('端末に保存できません。タブを閉じると会計が消えます', 6000);
+      return false;
+    }
+  }
+  function lsGet(key) {
+    if (useMemory) return memoryFallback[key] || null;
+    try {
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) { return null; }
+  }
+  function lsKeys(prefix) {
+    if (useMemory) {
+      return Object.keys(memoryFallback).filter(function (k) { return k.indexOf(prefix) === 0; });
+    }
+    var out = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(prefix) === 0) out.push(k);
+      }
+    } catch (err) { /* noop */ }
+    return out;
+  }
+
+  function saveTx(rec) { lsSet(KEY_TX_PREFIX + rec.id, rec); }
+  function getTx(id) { return lsGet(KEY_TX_PREFIX + id); }
+  function allTx() {
+    return lsKeys(KEY_TX_PREFIX)
+      .map(lsGet)
+      .filter(Boolean)
+      .sort(function (a, b) { return String(b.clientTime).localeCompare(String(a.clientTime)); });
+  }
+  function pendingTx() {
+    return allTx().filter(function (t) { return !t.synced; });
+  }
+
+  // ==========================================================
+  // サーバー呼び出し
+  // ==========================================================
+
+  function callServer(fnName, args) {
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (!settled) { settled = true; reject(new Error('timeout')); }
+      }, CALL_TIMEOUT_MS);
+
+      function done(fn) {
+        return function (value) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          fn(value);
+        };
+      }
+      try {
+        var runner = google.script.run
+          .withSuccessHandler(done(resolve))
+          .withFailureHandler(done(reject));
+        runner[fnName].apply(runner, args);
+      } catch (err) {
+        done(reject)(err);
+      }
+    });
+  }
+
+  // ==========================================================
+  // 価格
+  // ==========================================================
+
+  function applyPrices(prices, version) {
+    if (!prices) return;
+    var changed = Number(version) !== Number(state.priceVersion);
+    state.prices = {
+      set3: Number(prices.set3) || 0,
+      set7: Number(prices.set7) || 0,
+      single: Number(prices.single) || 0
+    };
+    state.priceVersion = Number(version) || 0;
+    lsSet(KEY_PRICES, { prices: state.prices, priceVersion: state.priceVersion });
+
+    if (changed) {
+      renderPrices();
+      renderCart();
+      // 会計前のカートは新しい価格で計算し直す。会計済みの売上は単価を焼き込んであるので動かない
+      var banner = $('price-banner');
+      if (banner && state.screen === 'pos') {
+        banner.hidden = false;
+        setTimeout(function () { banner.hidden = true; }, 8000);
+      }
+    }
+  }
+
+  // ==========================================================
+  // カート
+  // ==========================================================
+
+  function cartPieces() {
+    return state.cart.set3 * 3 + state.cart.set7 * 7 + state.cart.single;
+  }
+  function cartTotal() {
+    return state.cart.set3 * state.prices.set3
+         + state.cart.set7 * state.prices.set7
+         + state.cart.single * state.prices.single;
+  }
+  function cartIsEmpty() {
+    return state.cart.set3 === 0 && state.cart.set7 === 0 && state.cart.single === 0;
+  }
+  function clearCart() {
+    state.cart = { set3: 0, set7: 0, single: 0 };
+    $('input-received').value = '';
+    renderCart();
+  }
+  function addToCart(key, count) {
+    state.cart[key] = Math.max(0, state.cart[key] + (count || 1));
+    renderCart();
+  }
+
+  // ==========================================================
+  // 会計
+  // ==========================================================
+
+  function checkout() {
+    if (cartIsEmpty()) return;
+    var total = cartTotal();
+    var rawReceived = $('input-received').value.trim();
+    var received = rawReceived === '' ? total : parseAmount(rawReceived);
+    if (received < total) {
+      toast('お預かりが不足しています');
+      return;
+    }
+
+    var rec = {
+      id: uuid(),
+      deviceId: state.deviceId,
+      staff: state.staff,
+      clientTime: new Date().toISOString(),
+      kind: 'sale',
+      voidOf: null,
+      items: { set3: state.cart.set3, set7: state.cart.set7, single: state.cart.single },
+      unitPrices: {
+        set3: state.prices.set3,
+        set7: state.prices.set7,
+        single: state.prices.single
+      },
+      priceVersion: state.priceVersion,
+      total: total,
+      received: received,
+      change: received - total,
+      note: '',
+      synced: false,
+      voided: false
+    };
+    saveTx(rec);
+    clearCart();
+    renderSyncBadge();
+
+    var change = rec.change;
+    toast(change > 0 ? 'おつり ' + yen(change) : 'ちょうど ' + yen(total), 2600, true);
+    sync();
+  }
+
+  function voidTransaction(original) {
+    if (!original || original.voided || original.kind !== 'sale') return;
+    var rec = {
+      id: uuid(),
+      deviceId: state.deviceId,
+      staff: state.staff,
+      clientTime: new Date().toISOString(),
+      kind: 'void',
+      voidOf: original.id,
+      items: original.items,
+      // 取り消すのは「そのときの価格の売上」なので、元の単価をそのまま使う
+      unitPrices: original.unitPrices,
+      priceVersion: original.priceVersion,
+      total: original.total,
+      received: null,
+      change: null,
+      note: '',
+      synced: false,
+      voided: false
+    };
+    saveTx(rec);
+
+    var updated = getTx(original.id) || original;
+    updated.voided = true;
+    saveTx(updated);
+
+    renderHistory();
+    renderSyncBadge();
+    toast('取り消しました（' + yen(original.total) + '）');
+    sync();
+  }
+
+  // ==========================================================
+  // 同期
+  // ==========================================================
+
+  function toPayload(t) {
+    return {
+      id: t.id, deviceId: t.deviceId, staff: t.staff, clientTime: t.clientTime,
+      kind: t.kind, voidOf: t.voidOf, items: t.items, unitPrices: t.unitPrices,
+      priceVersion: t.priceVersion, total: t.total,
+      received: t.received, change: t.change, note: t.note
+    };
+  }
+
+  function sync() {
+    if (state.syncing) return Promise.resolve();
+    state.syncing = true;
+    renderSyncBadge();
+
+    var batch = pendingTx().map(toPayload);
+    return callServer('apiSyncTransactions', [state.passcode, batch])
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error((res && res.error) || '同期に失敗しました');
+        (res.acceptedIds || []).forEach(function (id) {
+          var t = getTx(id);
+          if (t) { t.synced = true; saveTx(t); }
+        });
+        state.online = true;
+        applyPrices(res.prices, res.priceVersion);
+      })
+      .catch(function () {
+        // 失敗しても未送信のまま端末に残るので、次の同期で再送される
+        state.online = false;
+      })
+      .then(function () {
+        state.syncing = false;
+        renderSyncBadge();
+        if (state.screen === 'history') renderHistory();
+      });
+  }
+
+  // ==========================================================
+  // 描画
+  // ==========================================================
+
+  function showScreen(name) {
+    state.screen = name;
+    ['login', 'pos', 'history', 'close'].forEach(function (s) {
+      var el = $('screen-' + s);
+      if (el) el.classList.toggle('is-active', s === name);
+    });
+    if (name === 'history') renderHistory();
+    if (name === 'close') renderClose();
+  }
+
+  function renderPrices() {
+    $('key-price-set3').textContent = yen(state.prices.set3);
+    $('key-price-set7').textContent = yen(state.prices.set7);
+    $('key-price-single').textContent = yen(state.prices.single) + ' / 個';
+  }
+
+  function renderCart() {
+    var list = $('cart');
+    list.innerHTML = '';
+    var empty = cartIsEmpty();
+    $('cart-empty').hidden = !empty;
+
+    ITEMS.forEach(function (item) {
+      var qty = state.cart[item.key];
+      if (qty <= 0) return;
+      var unit = state.prices[item.key];
+      var li = document.createElement('li');
+      li.className = 'cart-line';
+      li.innerHTML =
+        '<span class="cart-name">' + item.label +
+        '<span class="cart-unit">' + yen(unit) + ' × ' + qty + '</span></span>' +
+        '<button class="step" data-step="-1" data-key="' + item.key + '" aria-label="減らす">−</button>' +
+        '<span class="cart-qty">' + qty + '</span>' +
+        '<button class="step" data-step="1" data-key="' + item.key + '" aria-label="増やす">＋</button>' +
+        '<span class="cart-amount">' + yen(unit * qty) + '</span>';
+      list.appendChild(li);
+    });
+
+    var total = cartTotal();
+    $('total-pieces').textContent = cartPieces() + '個';
+    $('total-amount').textContent = yen(total);
+    renderChange();
+    // 価格がまだ届いていない（すべて ¥0）状態で ¥0 の会計を記録させない
+    $('btn-checkout').disabled = empty || total <= 0;
+  }
+
+  function renderChange() {
+    var total = cartTotal();
+    var raw = $('input-received').value.trim();
+    var received = raw === '' ? total : parseAmount(raw);
+    var change = received - total;
+    var box = document.querySelector('.change');
+    var short = raw !== '' && change < 0;
+    box.classList.toggle('is-short', short);
+    $('change-amount').textContent = short ? '不足 ' + yen(-change) : yen(Math.max(0, change));
+  }
+
+  function renderSyncBadge() {
+    var badge = $('sync-badge');
+    var n = pendingTx().length;
+    if (state.syncing) {
+      badge.className = 'badge'; badge.textContent = '同期中…';
+    } else if (n > 0) {
+      badge.className = 'badge ' + (state.online ? 'badge-pending' : 'badge-offline');
+      badge.textContent = (state.online ? '未送信 ' : 'オフライン ') + n;
+    } else if (!state.online) {
+      badge.className = 'badge badge-offline'; badge.textContent = 'オフライン';
+    } else {
+      badge.className = 'badge badge-ok'; badge.textContent = '同期済';
+    }
+  }
+
+  function renderHistory() {
+    var list = $('history-list');
+    var items = allTx().filter(function (t) { return t.kind === 'sale'; });
+    list.innerHTML = '';
+    $('history-empty').hidden = items.length > 0;
+    $('history-count').textContent = items.length + '件';
+
+    items.forEach(function (t) {
+      var detail = ITEMS.filter(function (i) { return t.items[i.key] > 0; })
+        .map(function (i) { return i.label + ' ×' + t.items[i.key]; })
+        .join(' / ');
+
+      var li = document.createElement('li');
+      li.className = 'history-item' + (t.voided ? ' is-void' : '');
+      var tags = '';
+      if (t.voided) tags += '<span class="tag tag-void">取消済</span>';
+      if (!t.synced) tags += '<span class="tag tag-pending">未送信</span>';
+
+      li.innerHTML =
+        '<div class="history-head">' +
+          '<span class="history-time">' + timeLabel(t.clientTime) + ' ・ ' + (t.staff || '') + '</span>' +
+          '<span class="history-amount">' + yen(t.total) + '</span>' +
+        '</div>' +
+        '<p class="history-detail">' + detail + '</p>' +
+        '<div class="history-foot">' + tags +
+          (t.voided ? '' : '<button class="btn-void" data-void="' + t.id + '">この会計を取り消す</button>') +
+        '</div>';
+      list.appendChild(li);
+    });
+  }
+
+  function shiftTransactions() {
+    var from = state.startedAt ? new Date(state.startedAt).getTime() : 0;
+    return allTx().filter(function (t) {
+      return t.staff === state.staff && new Date(t.clientTime).getTime() >= from;
+    });
+  }
+
+  function shiftCashSales() {
+    return shiftTransactions().reduce(function (sum, t) {
+      return sum + (t.kind === 'void' ? -t.total : t.total);
+    }, 0);
+  }
+
+  function renderClose() {
+    var txs = shiftTransactions();
+    var sales = shiftCashSales();
+    var expected = state.floatAmount + sales;
+
+    $('close-staff').textContent = state.staff || '—';
+    $('close-started').textContent = state.startedAt ? timeLabel(state.startedAt) : '—';
+    $('close-count').textContent = txs.filter(function (t) { return t.kind === 'sale' && !t.voided; }).length + '件';
+    $('close-sales').textContent = yen(sales);
+    $('close-float').textContent = yen(state.floatAmount);
+    $('close-expected').textContent = yen(expected);
+    renderCloseDiff();
+  }
+
+  function renderCloseDiff() {
+    var raw = $('input-counted').value.trim();
+    var box = $('close-diff-box');
+    if (raw === '') { box.hidden = true; return; }
+    var expected = state.floatAmount + shiftCashSales();
+    var diff = parseAmount(raw) - expected;
+    box.hidden = false;
+    box.classList.toggle('is-bad', diff !== 0);
+    $('close-diff').textContent = (diff > 0 ? '+' : '') + yen(diff);
+  }
+
+  var toastTimer = null;
+  function toast(message, ms, big) {
+    var el = $('toast');
+    el.textContent = message;
+    el.classList.toggle('is-big', !!big);
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.hidden = true; }, ms || 2200);
+  }
+
+  // ==========================================================
+  // 画面スリープ防止
+  // ==========================================================
+
+  var wakeLock = null;
+  function requestWakeLock() {
+    if (!navigator.wakeLock) return;
+    navigator.wakeLock.request('screen').then(function (lock) {
+      wakeLock = lock;
+      lock.addEventListener('release', function () { wakeLock = null; });
+    }).catch(function () { /* 環境によっては使えない。致命的ではない */ });
+  }
+
+  // ==========================================================
+  // イベント
+  // ==========================================================
+
+  function bindEvents() {
+    $('btn-login').addEventListener('click', login);
+    $('input-passcode').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') login();
+    });
+
+    document.querySelectorAll('[data-add]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        addToCart(btn.dataset.add, Number(btn.dataset.count || 1));
+      });
+    });
+
+    $('cart').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-step]');
+      if (!btn) return;
+      addToCart(btn.dataset.key, Number(btn.dataset.step));
+    });
+
+    document.querySelectorAll('[data-received]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var v = btn.dataset.received;
+        $('input-received').value = v === 'exact' ? String(cartTotal()) : v;
+        renderChange();
+      });
+    });
+
+    $('input-received').addEventListener('input', renderChange);
+    $('btn-checkout').addEventListener('click', checkout);
+    $('btn-clear').addEventListener('click', clearCart);
+
+    $('btn-menu').addEventListener('click', function () { $('menu-sheet').hidden = false; });
+    $('menu-sheet').addEventListener('click', function (e) {
+      if (e.target.id === 'menu-sheet') { $('menu-sheet').hidden = true; return; }
+      var btn = e.target.closest('[data-menu]');
+      if (!btn) return;
+      $('menu-sheet').hidden = true;
+      handleMenu(btn.dataset.menu);
+    });
+
+    document.querySelectorAll('[data-back]').forEach(function (btn) {
+      btn.addEventListener('click', function () { showScreen(btn.dataset.back); });
+    });
+
+    $('history-list').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-void]');
+      if (!btn) return;
+      var t = getTx(btn.dataset.void);
+      if (!t) return;
+      if (confirm(yen(t.total) + ' の会計を取り消します。よろしいですか？')) voidTransaction(t);
+    });
+
+    $('input-counted').addEventListener('input', renderCloseDiff);
+    $('btn-close-register').addEventListener('click', closeRegister);
+
+    window.addEventListener('online', function () { state.online = true; sync(); });
+    window.addEventListener('offline', function () { state.online = false; renderSyncBadge(); });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) { requestWakeLock(); sync(); }
+    });
+  }
+
+  function handleMenu(action) {
+    if (action === 'history') showScreen('history');
+    else if (action === 'close') showScreen('close');
+    else if (action === 'sync') {
+      sync().then(function () {
+        toast(state.online ? '同期しました' : 'サーバーに接続できません');
+      });
+    } else if (action === 'staff') {
+      var pending = pendingTx().length;
+      if (pending > 0 && !confirm('未送信の会計が ' + pending + ' 件あります。交代してもこの端末に残り、再送されます。続けますか？')) return;
+      showScreen('login');
+      $('input-staff').value = '';
+      $('input-staff').focus();
+    }
+  }
+
+  function login() {
+    var staff = $('input-staff').value.trim();
+    var passcode = $('input-passcode').value.trim();
+    var err = $('login-error');
+
+    if (!staff) { err.textContent = '担当者名を入力してください'; err.hidden = false; return; }
+    if (!passcode) { err.textContent = 'パスコードを入力してください'; err.hidden = false; return; }
+
+    err.hidden = true;
+    $('btn-login').disabled = true;
+    $('btn-login').textContent = '確認中…';
+
+    callServer('apiBootstrap', [passcode])
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error((res && res.error) || '接続できませんでした');
+        state.passcode = passcode;
+        state.staff = staff;
+        state.shopName = res.shopName;
+        state.floatAmount = parseAmount($('input-float').value);
+        state.startedAt = new Date().toISOString();
+        state.online = true;
+        applyPrices(res.prices, res.priceVersion);
+
+        lsSet(KEY_SESSION, {
+          passcode: passcode, staff: staff, deviceId: state.deviceId,
+          shopName: res.shopName, floatAmount: state.floatAmount, startedAt: state.startedAt
+        });
+
+        $('shop-name').textContent = state.shopName;
+        $('staff-name').textContent = '担当: ' + state.staff;
+        renderPrices();
+        renderCart();
+        renderSyncBadge();
+        showScreen('pos');
+        requestWakeLock();
+        sync();
+      })
+      .catch(function (e) {
+        err.textContent = e && e.message === 'timeout'
+          ? 'サーバーに接続できません。電波を確認してください'
+          : (e && e.message) || 'パスコードが違います';
+        err.hidden = false;
+      })
+      .then(function () {
+        $('btn-login').disabled = false;
+        $('btn-login').textContent = 'レジを開く';
+      });
+  }
+
+  function closeRegister() {
+    var err = $('close-error');
+    var raw = $('input-counted').value.trim();
+    if (raw === '') {
+      err.textContent = '実際に数えた現金を入力してください';
+      err.hidden = false;
+      return;
+    }
+    var pending = pendingTx().length;
+    if (pending > 0) {
+      err.textContent = '未送信の会計が ' + pending + ' 件あります。「いますぐ同期」を実行してください';
+      err.hidden = false;
+      return;
+    }
+    err.hidden = true;
+
+    var btn = $('btn-close-register');
+    btn.disabled = true;
+    btn.textContent = '記録中…';
+
+    callServer('apiCloseRegister', [state.passcode, {
+      staff: state.staff,
+      deviceId: state.deviceId,
+      startedAt: state.startedAt,
+      floatAmount: state.floatAmount,
+      cashSales: shiftCashSales(),
+      countedCash: parseAmount(raw),
+      txCount: shiftTransactions().filter(function (t) { return t.kind === 'sale' && !t.voided; }).length,
+      note: $('input-close-note').value.trim()
+    }])
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error((res && res.error) || '記録できませんでした');
+        var diff = res.difference;
+        toast(diff === 0 ? 'ぴったりです。お疲れさまでした' : '差額 ' + (diff > 0 ? '+' : '') + yen(diff) + ' を記録しました', 4000);
+        showScreen('pos');
+      })
+      .catch(function (e) {
+        err.textContent = (e && e.message === 'timeout') ? 'サーバーに接続できません' : (e && e.message) || '記録できませんでした';
+        err.hidden = false;
+      })
+      .then(function () {
+        btn.disabled = false;
+        btn.textContent = 'レジ締めを記録する';
+      });
+  }
+
+  // ==========================================================
+  // 起動
+  // ==========================================================
+
+  function boot() {
+    var session = lsGet(KEY_SESSION) || {};
+    state.deviceId = session.deviceId || uuid().slice(0, 8);
+
+    var cached = lsGet(KEY_PRICES);
+    if (cached) {
+      state.prices = cached.prices;
+      state.priceVersion = cached.priceVersion;
+    }
+
+    bindEvents();
+
+    // 直前のシフトを復元する（リロードしても未送信の会計は残っている）
+    if (session.passcode && session.staff) {
+      state.passcode = session.passcode;
+      state.staff = session.staff;
+      state.shopName = session.shopName || 'レジ';
+      state.floatAmount = session.floatAmount || 0;
+      state.startedAt = session.startedAt || new Date().toISOString();
+      $('shop-name').textContent = state.shopName;
+      $('staff-name').textContent = '担当: ' + state.staff;
+      renderPrices();
+      renderCart();
+      renderSyncBadge();
+      showScreen('pos');
+      requestWakeLock();
+      sync();
+    } else {
+      showScreen('login');
+      $('input-staff').focus();
+    }
+
+    setInterval(sync, SYNC_INTERVAL_MS);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>

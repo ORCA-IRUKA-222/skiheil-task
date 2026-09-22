@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <?!= include('style'); ?>
+</head>
+<body>
+
+<!-- ───────── ログイン / シフト開始 ───────── -->
+<section id="screen-login" class="screen is-active">
+  <div class="login-card">
+    <h1 class="login-title">レジ</h1>
+    <p class="login-sub">担当者とパスコードを入力してください</p>
+
+    <label class="field">
+      <span class="field-label">担当者名 <em>必須</em></span>
+      <input id="input-staff" type="text" autocomplete="name" placeholder="例: 田中">
+    </label>
+
+    <label class="field">
+      <span class="field-label">パスコード <em>必須</em></span>
+      <input id="input-passcode" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
+    </label>
+
+    <label class="field">
+      <span class="field-label">釣銭準備金 <em class="opt">任意・レジ締めで使います</em></span>
+      <input id="input-float" type="text" inputmode="numeric" placeholder="例: 10000">
+    </label>
+
+    <p id="login-error" class="error" hidden></p>
+    <button id="btn-login" class="btn btn-primary btn-block">レジを開く</button>
+
+    <p class="login-note">
+      会場で電波が切れてもレジは動きますが、<strong>この画面を開いたままにしてください</strong>。
+      一度閉じると、電波がないあいだは開き直せません。
+    </p>
+  </div>
+</section>
+
+<!-- ───────── レジ本体 ───────── -->
+<section id="screen-pos" class="screen">
+  <header class="topbar">
+    <div class="topbar-main">
+      <span id="shop-name" class="shop-name">レジ</span>
+      <span id="staff-name" class="staff-name"></span>
+    </div>
+    <div class="topbar-side">
+      <span id="sync-badge" class="badge badge-ok">同期済</span>
+      <button id="btn-menu" class="icon-btn" aria-label="メニュー">☰</button>
+    </div>
+  </header>
+
+  <div id="price-banner" class="banner" hidden>
+    価格が変更されました。カートを新しい価格で計算し直しました。
+  </div>
+
+  <main class="pos">
+    <div class="keys">
+      <button class="key" data-add="set3">
+        <span class="key-name">3個</span>
+        <span class="key-price" id="key-price-set3">—</span>
+      </button>
+      <button class="key" data-add="set7">
+        <span class="key-name">7個</span>
+        <span class="key-price" id="key-price-set7">—</span>
+      </button>
+      <button class="key key-single" data-add="single">
+        <span class="key-name">バラ +1</span>
+        <span class="key-price" id="key-price-single">—</span>
+      </button>
+    </div>
+
+    <div class="quick-row">
+      <button class="chip" data-add="single" data-count="5">バラ +5</button>
+      <button class="chip" data-add="single" data-count="10">バラ +10</button>
+    </div>
+
+    <ul id="cart" class="cart"></ul>
+    <p id="cart-empty" class="cart-empty">商品ボタンを押してください</p>
+
+    <div class="total">
+      <span id="total-pieces" class="total-pieces">0個</span>
+      <span id="total-amount" class="total-amount">¥0</span>
+    </div>
+
+    <div class="pay">
+      <label class="pay-row">
+        <span class="pay-label">お預かり</span>
+        <input id="input-received" type="text" inputmode="numeric" placeholder="0">
+      </label>
+      <div class="quick-row">
+        <button class="chip" data-received="exact">ちょうど</button>
+        <button class="chip" data-received="1000">1,000</button>
+        <button class="chip" data-received="2000">2,000</button>
+        <button class="chip" data-received="5000">5,000</button>
+        <button class="chip" data-received="10000">10,000</button>
+      </div>
+      <div class="change">
+        <span class="change-label">おつり</span>
+        <span id="change-amount" class="change-amount">¥0</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="actions">
+    <button id="btn-clear" class="btn btn-ghost">クリア</button>
+    <button id="btn-checkout" class="btn btn-primary btn-grow" disabled>会計する</button>
+  </footer>
+</section>
+
+<!-- ───────── メニュー ───────── -->
+<div id="menu-sheet" class="sheet" hidden>
+  <div class="sheet-panel">
+    <button class="sheet-item" data-menu="history">会計履歴・取消</button>
+    <button class="sheet-item" data-menu="close">レジ締め</button>
+    <button class="sheet-item" data-menu="sync">いますぐ同期</button>
+    <button class="sheet-item" data-menu="staff">担当者を交代</button>
+    <button class="sheet-item sheet-cancel" data-menu="cancel">閉じる</button>
+  </div>
+</div>
+
+<!-- ───────── 履歴 ───────── -->
+<section id="screen-history" class="screen">
+  <header class="topbar">
+    <button class="icon-btn" data-back="pos" aria-label="戻る">←</button>
+    <div class="topbar-main"><span class="shop-name">会計履歴</span></div>
+    <div class="topbar-side"><span id="history-count" class="badge"></span></div>
+  </header>
+  <main class="history">
+    <ul id="history-list" class="history-list"></ul>
+    <p id="history-empty" class="cart-empty">まだ会計がありません</p>
+  </main>
+</section>
+
+<!-- ───────── レジ締め ───────── -->
+<section id="screen-close" class="screen">
+  <header class="topbar">
+    <button class="icon-btn" data-back="pos" aria-label="戻る">←</button>
+    <div class="topbar-main"><span class="shop-name">レジ締め</span></div>
+    <div class="topbar-side"></div>
+  </header>
+  <main class="close-body">
+    <dl class="summary">
+      <div><dt>担当者</dt><dd id="close-staff">—</dd></div>
+      <div><dt>開始時刻</dt><dd id="close-started">—</dd></div>
+      <div><dt>会計件数</dt><dd id="close-count">—</dd></div>
+      <div><dt>現金売上</dt><dd id="close-sales">—</dd></div>
+      <div><dt>釣銭準備金</dt><dd id="close-float">—</dd></div>
+      <div class="summary-strong"><dt>理論現金</dt><dd id="close-expected">—</dd></div>
+    </dl>
+
+    <label class="field">
+      <span class="field-label">実際に数えた現金</span>
+      <input id="input-counted" type="text" inputmode="numeric" placeholder="0">
+    </label>
+
+    <div id="close-diff-box" class="diff" hidden>
+      <span class="change-label">差額</span>
+      <span id="close-diff" class="change-amount">¥0</span>
+    </div>
+
+    <label class="field">
+      <span class="field-label">備考</span>
+      <input id="input-close-note" type="text" placeholder="例: 両替でズレた分">
+    </label>
+
+    <p id="close-error" class="error" hidden></p>
+    <p class="login-note">
+      未送信の会計が残っているとレジ締めは記録できません。電波の届く場所で「いますぐ同期」を実行してください。
+    </p>
+    <button id="btn-close-register" class="btn btn-primary btn-block">レジ締めを記録する</button>
+  </main>
+</section>
+
+<div id="toast" class="toast" hidden></div>
+
+<?!= include('script'); ?>
+</body>
+</html>
