@@ -1,7 +1,10 @@
 # Apps Script のバックアップ手順
 
 このディレクトリには「SKIHEIL OB合宿管理（年次テンプレート）」に紐づく
-Google Apps Script のソースコードを置く。**現時点では未収録。**
+Google Apps Script のソースコードを置く。**収録しない方針。**
+
+このテンプレートは後継版（マスターテンプレート）に置き換わったため、コードは保存しない。
+本ディレクトリの手順は、将来ほかのコンテナバインドスクリプトを保存するときの参考として残す。
 
 > 後継版（マスターテンプレート）のコードは
 > [`../../ob-camp-master-template/apps-script/`](../../ob-camp-master-template/apps-script/) に収録済み。

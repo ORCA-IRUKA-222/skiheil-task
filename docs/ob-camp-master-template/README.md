@@ -18,12 +18,19 @@
 | [`apps-script/コード.gs`](apps-script/コード.gs) | Web アプリ本体、料金計算、日別集計、管理メニュー | 収録済み |
 | [`apps-script/TemplateOps.gs`](apps-script/TemplateOps.gs) | 「テンプレート運用」メニュー。複製後の初期化と Web アプリ URL 登録 | 収録済み |
 | [`apps-script/index.html`](apps-script/index.html) | OB 向けの登録フォーム（CSS・JS 同梱） | 収録済み |
-| `apps-script/appsscript.json` | マニフェスト | **未収録** |
+| [`apps-script/appsscript.json`](apps-script/appsscript.json) | マニフェスト。タイムゾーンとウェブアプリ設定 | 収録済み |
 
-> **`appsscript.json` が未収録です。**
-> Apps Script エディタの ⚙ プロジェクトの設定 →「`appsscript.json` マニフェスト ファイルを
-> エディタで表示する」にチェックを入れると表示されます。復元時はタイムゾーン
-> （`Asia/Tokyo`）とウェブアプリ設定が必要なので、取得してここに追加してください。
+4 ファイルすべて収録済み。これだけあればスクリプトを丸ごと復元できる。
+
+マニフェストの内容:
+
+| 設定 | 値 | 意味 |
+| --- | --- | --- |
+| `timeZone` | `Asia/Tokyo` | 日付の解釈と `Utilities.formatDate` の基準 |
+| `runtimeVersion` | `V8` | アロー関数・`const`・スプレッド構文を使っているため必須 |
+| `webapp.executeAs` | `USER_DEPLOYING` | デプロイした人の権限で動く。OB は Google ログイン不要 |
+| `webapp.access` | `ANYONE_ANONYMOUS` | URL を知っていれば誰でも開ける |
+| `exceptionLogging` | `STACKDRIVER` | エラーが Apps Script の実行ログに残る |
 
 ### 公開リポジトリ向けに 1 箇所だけ変更しています
 
@@ -165,7 +172,8 @@
 2. 拡張機能 → Apps Script を開き、[`apps-script/`](apps-script/) の 3 ファイルを同名で貼る
    - `コード.gs` `TemplateOps.gs` … スクリプトファイル
    - `index.html` … HTML ファイル
-3. `appsscript.json` を設定する（タイムゾーン `Asia/Tokyo`、ウェブアプリ）
+3. ⚙ プロジェクトの設定 →「`appsscript.json` マニフェスト ファイルをエディタで表示する」に
+   チェックを入れ、[`apps-script/appsscript.json`](apps-script/appsscript.json) の内容を貼る
 4. 「年度設定」の必須キーをすべて埋める（§3）
 5. デプロイ → 新しいデプロイ → ウェブアプリ／アクセス「全員」
 6. メニュー「テンプレート運用 → Web アプリ URL を使い方シートへ反映」で URL を登録
