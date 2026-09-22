@@ -5,6 +5,8 @@
 # スプレッドシートのフルバックアップ（個人情報を含むため）
 *.xlsx
 *.xlsm
+# ただしレジのテンプレート雛形は配布物なので追跡する
+!apps/festival-pos/template/*.xlsx
 
 .DS_Store
 node_modules/

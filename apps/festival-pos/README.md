@@ -14,7 +14,13 @@ apps/festival-pos/
     script.html       端末側のロジック（カタログ・カート・ローカル保存・同期）
   test/
     run.sh            Node でサーバー側ロジックを検証する（60ケース）
+  template/
+    文化祭レジ_ベビーカステラ_テンプレート.xlsx   スプレッドシートの雛形
+    build_template.py                              雛形の生成スクリプト
 ```
+
+> スプレッドシートは空から作って「レジ管理 → シートを初期化 / 修復」を実行するのが確実。
+> 雛形の使いどころは [`template/README.md`](template/) を参照。
 
 ---
 
