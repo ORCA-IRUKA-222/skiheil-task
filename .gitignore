@@ -1,0 +1,10 @@
+# clasp（スクリプト ID が入るため public リポジトリには置かない）
+.clasp.json
+.clasprc.json
+
+# スプレッドシートのフルバックアップ（個人情報を含むため）
+*.xlsx
+*.xlsm
+
+.DS_Store
+node_modules/
