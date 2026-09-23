@@ -12,6 +12,7 @@ const ITEMS = [
   ['抹茶',     400, 800, 160, '停止中', '焼き上がり待ち'],
   ['チョコ',   999, 999, 999, '販売中', '重複行。無視される'],
   ['',         0,   0,   0,   '',       ''],
+  ['※「セット以外は常にバラ単価」で計算します。', 0, 0, 0, '', ''],  // 旧版がデータ行の下に書いた注記
 ];
 
 const readOnly = (data) => ({
@@ -64,6 +65,7 @@ eq('味ごとの価格', boot.catalog.map((i) => [i.name, i.set3, i.set7, i.sing
   [['プレーン',300,600,120], ['チョコ',350,700,140], ['抹茶',400,800,160]]);
 eq('重複行は先勝ち（チョコは350のまま）', boot.catalog[1].set3, 350);
 eq('停止中も active:false で返す', boot.catalog.map((i) => i.active), [true, true, false]);
+eq('価格のない注記の行は商品にしない', boot.catalog.some((i) => i.name.indexOf('※') === 0), false);
 eq('間違ったパスコードは拒否', mod.apiBootstrap('9999').ok, false);
 
 console.log('\n── パスコード ──');

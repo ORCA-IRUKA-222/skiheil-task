@@ -226,6 +226,16 @@ def build_items(wb):
                 "味ごとに1行つくります。ここを直すと各端末のボタンと価格が自動で入れ替わります（最大15秒）。"
                 "過去の売上金額は会計時の単価で固定されているので変わりません。"
                 "「販売状態」を停止中にすると、その味のボタンがレジから消えます。", width)
+    # 注記は必ず見出しより上に置く。データ行の下に書くと商品として読まれてしまう
+    ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=width)
+    rule = ws.cell(row=3, column=1,
+                   value="※「セット以外は常にバラ単価」で計算します。"
+                         "3個・7個ちょうどのときだけセット価格、それ以外は 個数 × バラ単価 です。"
+                         "セットとバラは組み合わせられます。")
+    rule.font = Font(size=10, color=NOTE)
+    rule.alignment = Alignment(wrap_text=True, vertical="top")
+    ws.row_dimensions[3].height = 26
+
     header_row(ws, 4, ITEMS_HEADERS)
 
     samples = [
@@ -249,15 +259,6 @@ def build_items(wb):
     dv.errorTitle = "販売状態"
     ws.add_data_validation(dv)
     dv.add("E{}:E{}".format(first, last))
-
-    ws.merge_cells(start_row=last + 2, start_column=1, end_row=last + 3, end_column=width)
-    note = ws.cell(row=last + 2, column=1,
-                   value="※ 商品名がキーです。同じ名前を2行書くと、下の行は無視されます"
-                         "（「レジ管理 → 設定をチェック」が警告します）。"
-                         "※「セット以外は常にバラ単価」で計算します。"
-                         "3個・7個ちょうどのときだけセット価格、それ以外は 個数 × バラ単価 です。")
-    note.font = Font(size=10, color=NOTE)
-    note.alignment = Alignment(wrap_text=True, vertical="top")
 
     widths(ws, {"A": 18, "B": 13, "C": 13, "D": 13, "E": 12, "F": 32})
     return ws

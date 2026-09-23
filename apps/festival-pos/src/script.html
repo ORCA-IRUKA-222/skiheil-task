@@ -405,26 +405,28 @@
 
       var keys = el('div', 'item-keys');
       UNITS.forEach(function (unit) {
-        var wrap = el('div', 'key-wrap');
+        var qty = cartQty(item.name, unit);
         var button = el('button', 'key');
         button.type = 'button';
         button.dataset.item = item.name;
         button.dataset.unit = unit;
+        // 選んだボタン自体の色を変える。個数バッジだけだとどのボタンの数か読み取りにくい
+        if (qty > 0) button.classList.add('is-selected');
 
         var label = el('span', 'key-name');
         label.textContent = UNIT_SHORT[unit];
         var price = el('span', 'key-price');
         price.textContent = yen(item[unit]) + (unit === 'single' ? ' /個' : '');
         button.append(label, price);
-        wrap.appendChild(button);
 
-        var qty = cartQty(item.name, unit);
+        // 個数はボタンの内側に入れる。外に出すと隣のボタンの数に見えてしまう
         if (qty > 0) {
           var badge = el('span', 'key-count');
           badge.textContent = qty;
-          wrap.appendChild(badge);
+          badge.setAttribute('aria-label', UNIT_LABELS[unit] + ' ' + qty + '点');
+          button.appendChild(badge);
         }
-        keys.appendChild(wrap);
+        keys.appendChild(button);
       });
       card.appendChild(keys);
       host.appendChild(card);

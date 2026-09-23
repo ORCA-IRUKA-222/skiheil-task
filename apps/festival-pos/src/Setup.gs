@@ -132,7 +132,21 @@ function _setupItemsSheet_(ss) {
     '味ごとに1行つくります。ここを直すと各端末のボタンと価格が自動で入れ替わります（最大15秒）。' +
     '過去の売上金額は会計時の単価で固定されているので変わりません。' +
     '「販売状態」を停止中にすると、その味のボタンがレジから消えます。', width);
+  // 注記は必ず見出しより上に置く。データ行の下に書くと、商品として読まれてしまう
+  sheet.getRange(3, 1, 1, width).merge()
+    .setValue('※「セット以外は常にバラ単価」で計算します。3個・7個ちょうどのときだけセット価格、' +
+              'それ以外は 個数 × バラ単価 です。セットとバラは組み合わせられます。')
+    .setFontSize(10).setFontColor(THEME.note).setWrap(true);
+  sheet.setRowHeight(3, 30);
+
   _headerRow_(sheet, ITEMS_HEADER_ROW, ITEMS_HEADERS);
+
+  // 以前のバージョンはデータ行の下に注記を書いていた。残っていると ¥0 の商品として
+  // 読まれてしまうので消す
+  const staleNoteRow = ITEMS_LAST_ROW + 2;
+  if (sheet.getMaxRows() >= staleNoteRow + 1) {
+    sheet.getRange(staleNoteRow, 1, 2, sheet.getMaxColumns()).breakApart().clearContent();
+  }
 
   // 商品が 1 つも無いときだけサンプルを入れる
   if (_readCatalogSafe_().length === 0) {
@@ -158,11 +172,6 @@ function _setupItemsSheet_(ss) {
   sheet.setColumnWidth(5, 100);
   sheet.setColumnWidth(6, 260);
 
-  const noteRow = ITEMS_LAST_ROW + 2;
-  sheet.getRange(noteRow, 1, 1, width).merge()
-    .setValue('※「セット以外は常にバラ単価」で計算します。3個・7個ちょうどのときだけセット価格、' +
-              'それ以外は 個数 × バラ単価 です。セットとバラは組み合わせられます。')
-    .setFontSize(10).setFontColor(THEME.note).setWrap(true);
 }
 
 function _readCatalogSafe_() {

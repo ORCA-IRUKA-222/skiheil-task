@@ -404,6 +404,9 @@ function _settingsRowIndex_(sheet) {
  * 商品シートを読んでカタログにする。
  * 商品名がキー。同じ名前が 2 行あった場合は先に書かれている方を採用する。
  * 停止中の商品も active:false として返す（会計途中のカートの単価が引けなくなるため）。
+ *
+ * 価格が 1 つも入っていない行は商品として扱わない。
+ * データ行の下に書いた注記などを ¥0 の商品ボタンとして拾ってしまわないため。
  */
 function _readCatalog_() {
   const sheet = _sheet_(SHEETS.ITEMS);
@@ -419,12 +422,16 @@ function _readCatalog_() {
   values.forEach(function (row) {
     const name = String(row[0] || '').trim();
     if (!name || seen[name]) return;
+    const set3 = _num_(row[1]);
+    const set7 = _num_(row[2]);
+    const single = _num_(row[3]);
+    if (set3 <= 0 && set7 <= 0 && single <= 0) return;
     seen[name] = true;
     catalog.push({
       name: name,
-      set3: _num_(row[1]),
-      set7: _num_(row[2]),
-      single: _num_(row[3]),
+      set3: set3,
+      set7: set7,
+      single: single,
       active: String(row[4] || '販売中').trim() !== '停止中'
     });
   });
