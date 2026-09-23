@@ -34,6 +34,9 @@
     startedAt: null,
     online: true,
     syncing: false,
+    authError: false,   // サーバーは応答しているが断られた（パスコード違いなど）
+    lastError: '',
+    errorNotified: false,
     screen: 'login'
   };
 
@@ -148,19 +151,32 @@
   // 商品カタログ
   // ==========================================================
 
+  /**
+   * カタログを表示できる形に揃える。
+   * 価格が 1 つも入っていない行はボタンにしない。商品シートの注記などを
+   * ¥0 のボタンとして拾ってしまうのを、端末側でも止めるため
+   * （オフライン中は端末に保存した古いカタログを使うので、ここでも弾く必要がある）。
+   */
+  function sanitizeCatalog(catalog) {
+    if (!Array.isArray(catalog)) return [];
+    return catalog.map(function (item) {
+      return {
+        name: String((item && item.name) || ''),
+        set3: Number(item && item.set3) || 0,
+        set7: Number(item && item.set7) || 0,
+        single: Number(item && item.single) || 0,
+        active: !item || item.active !== false
+      };
+    }).filter(function (item) {
+      return item.name && (item.set3 > 0 || item.set7 > 0 || item.single > 0);
+    });
+  }
+
   function applyCatalog(catalog, version) {
     if (!Array.isArray(catalog)) return;
     var changed = Number(version) !== Number(state.catalogVersion);
 
-    state.catalog = catalog.map(function (item) {
-      return {
-        name: String(item.name || ''),
-        set3: Number(item.set3) || 0,
-        set7: Number(item.set7) || 0,
-        single: Number(item.single) || 0,
-        active: item.active !== false
-      };
-    }).filter(function (item) { return item.name; });
+    state.catalog = sanitizeCatalog(catalog);
 
     // 会計途中のカートが解決できなくならないよう、一度見た単価は覚えておく
     state.catalog.forEach(function (item) {
@@ -350,7 +366,12 @@
     var batch = pendingTx().map(toPayload);
     return callServer('apiSyncTransactions', [state.passcode, batch])
       .then(function (res) {
-        if (!res || !res.ok) throw new Error((res && res.error) || '同期に失敗しました');
+        if (!res || !res.ok) {
+          // サーバーは動いているのに断られた。待っても直らないので区別する
+          var refused = new Error((res && res.error) || '同期に失敗しました');
+          refused.fromServer = true;
+          throw refused;
+        }
         (res.acceptedIds || []).forEach(function (id) {
           var t = getTx(id);
           if (t) { t.synced = true; saveTx(t); }
@@ -365,11 +386,22 @@
           toast('記録できなかった会計があります（履歴を確認してください）', 5000);
         });
         state.online = true;
+        state.authError = false;
+        state.lastError = '';
+        state.errorNotified = false;
         applyCatalog(res.catalog, res.catalogVersion);
       })
-      .catch(function () {
-        // 失敗しても未送信のまま端末に残るので、次の同期で再送される
+      .catch(function (e) {
+        // 会計は端末に残るので失われないが、原因は必ず見えるようにする
         state.online = false;
+        state.authError = Boolean(e && e.fromServer);
+        state.lastError = (e && e.message === 'timeout')
+          ? 'サーバーに接続できません（電波かデプロイを確認）'
+          : ((e && e.message) || '原因不明のエラー');
+        if (state.authError && !state.errorNotified) {
+          state.errorNotified = true;
+          toast(state.lastError, 6000);
+        }
       })
       .then(function () {
         state.syncing = false;
@@ -500,16 +532,37 @@
   function renderSyncBadge() {
     var badge = $('sync-badge');
     var n = pendingTx().length;
+    var suffix = n > 0 ? ' ' + n : '';
     if (state.syncing) {
       badge.className = 'badge'; badge.textContent = '同期中…';
-    } else if (n > 0) {
-      badge.className = 'badge ' + (state.online ? 'badge-pending' : 'badge-offline');
-      badge.textContent = (state.online ? '未送信 ' : 'オフライン ') + n;
+    } else if (state.authError) {
+      // 電波の問題ではない。押せば理由が出る
+      badge.className = 'badge badge-offline'; badge.textContent = '要確認' + suffix;
     } else if (!state.online) {
-      badge.className = 'badge badge-offline'; badge.textContent = 'オフライン';
+      badge.className = 'badge badge-offline'; badge.textContent = 'オフライン' + suffix;
+    } else if (n > 0) {
+      badge.className = 'badge badge-pending'; badge.textContent = '未送信 ' + n;
     } else {
       badge.className = 'badge badge-ok'; badge.textContent = '同期済';
     }
+  }
+
+  /** バッジを押したときに今の状態を説明する */
+  function explainSyncState() {
+    var n = pendingTx().length;
+    if (state.syncing) return toast('同期中です', 2000);
+    if (state.online && n === 0) return toast('すべて記録済みです', 2000);
+
+    var lines = [];
+    if (state.authError) {
+      lines.push('サーバーに断られました: ' + state.lastError);
+      lines.push('「担当者を交代」からパスコードを入れ直してください');
+    } else if (!state.online) {
+      lines.push('サーバーに届いていません: ' + (state.lastError || '原因不明'));
+      lines.push('電波が戻れば自動で再送します');
+    }
+    if (n > 0) lines.push('未送信 ' + n + ' 件（端末に保存済み）');
+    toast(lines.join(' / '), 8000);
   }
 
   function describeLines(lines) {
@@ -666,6 +719,7 @@
     $('btn-checkout').addEventListener('click', checkout);
     $('btn-clear').addEventListener('click', clearCart);
 
+    $('sync-badge').addEventListener('click', explainSyncState);
     $('btn-menu').addEventListener('click', function () { $('menu-sheet').hidden = false; });
     $('menu-sheet').addEventListener('click', function (e) {
       if (e.target.id === 'menu-sheet') { $('menu-sheet').hidden = true; return; }
@@ -822,7 +876,7 @@
 
     var cached = lsGet(KEY_CATALOG);
     if (cached) {
-      state.catalog = cached.catalog || [];
+      state.catalog = sanitizeCatalog(cached.catalog);
       state.catalogVersion = cached.catalogVersion || 0;
       state.knownItems = cached.knownItems || {};
     }
